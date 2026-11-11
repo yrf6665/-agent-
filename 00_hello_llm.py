@@ -14,14 +14,9 @@ from common import MODEL, client
 #   system    给模型定身份、定规则（相当于上周学的"角色 + 约束"）
 #   user      用户说的话
 #   assistant 模型说过的话
-question=input("\n请输入你想说的问题")
 messages = [
-    {"role": "system", "content":
-        "你是一名耐心的编程助教，回答控制在 50 字以内。"
-        "美食推荐必须且只能来自 food_recommend 工具的返回结果。"
-        "如果工具返回'未收录'，就直接告诉用户该地区暂未收录，"
-        "禁止用你自己的知识推荐任何食物。"},
-    {"role": "user", "content": question},
+    {"role": "system", "content": "你是一名耐心的编程助教，回答控制在 50 字以内。"},
+    {"role": "user", "content": "用一句话解释什么是 AI Agent。"},
 ]
 
 resp = client.chat.completions.create(model=MODEL, messages=messages)

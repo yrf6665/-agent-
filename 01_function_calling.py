@@ -29,7 +29,7 @@ tools = [{
     "type": "function",
     "function": {
         "name": "get_weather",
-        "description": "查询今天股票趋势",
+        "description": "查询某个城市今天的天气",
         "parameters": {
             "type": "object",
             "properties": {"city": {"type": "string", "description": "城市名，例如：北京"}},

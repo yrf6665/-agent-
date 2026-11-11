@@ -17,7 +17,8 @@ Cursor、Trae、Claude Code 这些编程 Agent 的骨架也是这个循环，
 """
 import json
 import os
-import random
+import subprocess
+import sys
 
 from common import MODEL, client, to_dict
 
@@ -58,23 +59,44 @@ def write_file(path, content):
         f.write(content)
     return f"已写入 {path}"
 
-FOODS_BY_REGION = {
-    "河南": ["烩面", "胡辣汤", "洛阳水席", "开封灌汤包"],
-    "四川": ["火锅", "麻辣香锅", "担担面", "串串香"],
-    "广东": ["肠粉", "煲仔饭", "烧鹅", "虾饺"],
-    "东北": ["锅包肉", "铁锅炖", "酸菜白肉", "饺子"],
-    "陕西": ["肉夹馍", "羊肉泡馍", "凉皮", "油泼面"],
-    "湖南": ["臭豆腐", "剁椒鱼头", "长沙米粉", "口味虾"],
-}
-def food_recommend(region):
-    """按地域随机推荐一道当地美食。region 填省份或地区名，如 河南、四川。"""
-    foods = FOODS_BY_REGION.get(region)         # 查字典；没有这个键返回 None
-    if not foods:
-        known = "、".join(FOODS_BY_REGION)      # 把收录的地域拼成一句话
-        return f"美食库里没有收录 {region}，目前有：{known}。换一个地区试试？"
-    return f"今天推荐你吃{region}的：" + random.choice(foods) + "！"
+def run_python(path):
+    script = safe_path(path)
 
-TOOLS = {"list_files": list_files, "read_file": read_file, "write_file": write_file,"food_recommend": food_recommend}
+    if not os.path.isfile(script) or not script.lower().endswith(".py"):
+        return "只能运行工作区内存在的 .py 文件。"
+
+    print(f"\n   ⚠ Agent 请求运行脚本 {path}")
+    if input("   允许吗？(y/n) ").strip().lower() != "y":
+        return "用户拒绝了这次运行。"
+
+    try:
+        result = subprocess.run(
+            [sys.executable, script],
+            cwd=WORKSPACE,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        return "脚本运行超过 30 秒，已终止。"
+
+    output = (result.stdout + result.stderr).strip()
+    if result.returncode != 0:
+        output = f"退出码：{result.returncode}\n{output}"
+
+    if len(output) > MAX_CHARS:
+        output = output[:MAX_CHARS] + "\n……（输出过长，已截断）"
+
+    return output or "脚本运行完成，没有输出。"
+
+TOOLS = {
+    "list_files": list_files,
+    "read_file": read_file,
+    "write_file": write_file,
+    "run_python": run_python,
+}
 
 
 # ======================== ② 工具说明书：写给模型看 ========================
@@ -93,17 +115,11 @@ SCHEMAS = [
     schema("read_file", "读取工作区内一个文本文件的内容", {"path": STR}, ["path"]),
     schema("write_file", "把内容写入工作区内的文件（会覆盖原文件）", {"path": STR, "content": STR}, ["path", "content"]),
     schema(
-        "food_recommend",
-        "按地域随机推荐一道当地美食。当用户想吃某地风味、问当地特色、"
-        "或提到自己家乡/所在地想知道吃什么时用；与吃无关的事不要用它。",
-        {
-            "region": {
-                "type": "string",
-                "description": "省份或地区名，如：河南、四川、广东、东北、陕西、湖南。"
-                               "用户提到具体城市（如洛阳）就填它所属的省份",
-            }
-        },
-    ),
+    "run_python",
+    "运行工作区内的 Python 脚本；最长 30 秒，运行前会询问用户。任务需要查看脚本实际输出时调用。",
+    {"path": STR},
+    ["path"],
+),
 ]
 
 
@@ -114,10 +130,7 @@ def run_agent(task):
             "你是一个能操作本地文件的编程助手。工作原则：\n"
             "1. 先观察（列目录、读文件）再下结论，不要凭空猜测文件内容；\n"
             "2. 每次只做一小步，根据工具返回的结果决定下一步；\n"
-            "3. 任务完成后，用中文简要总结你做了什么。"
-            "4.美食推荐必须且只能来自 food_recommend 工具的返回结果。"
-            "5.如果工具返回'未收录'，就直接告诉用户该地区暂未收录，"
-            "6.禁止用你自己的知识推荐任何食物。")},
+            "3. 任务完成后，用中文简要总结你做了什么。")},
         {"role": "user", "content": task},
     ]
 
