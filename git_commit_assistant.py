@@ -166,7 +166,7 @@ def git_stage(paths):
 
 
 def git_commit(message):
-    """显示当前暂存文件和提交说明，经用户确认后创建本地提交。"""
+    """显示暂存文件、改动统计和完整差异，经用户确认后创建本地提交。"""
     problem = _repo_check()
     if problem:
         return problem
@@ -179,12 +179,25 @@ def git_commit(message):
     if not staged:
         return "暂存区为空，没有创建提交。先用 git_stage 暂存明确选择的文件。"
 
+    stat = _run_git(["diff", "--cached", "--stat"])
+    if stat.returncode != 0:
+        return _failure(stat)
+    diff = _run_git(["diff", "--cached", "--no-ext-diff", "--no-color", "--unified=3", "--"])
+    if diff.returncode != 0:
+        return _failure(diff)
+
     branch = _run_git(["branch", "--show-current"])
     branch_name = branch.stdout.strip() if branch.returncode == 0 else "当前分支"
     listing = "\n".join(f"  - {path}" for path in staged)
+    change_summary = stat.stdout.strip() or "（没有文本改动统计，可能是二进制或仅文件属性变化）"
+    change_diff = diff.stdout.strip() or "（没有可显示的文本差异）"
     commit_message = message.strip()
     if not _confirm(
-        f"将在分支 {branch_name} 创建本地提交。文件：\n{listing}\n提交说明：{commit_message}"
+        f"将在分支 {branch_name} 创建本地提交。\n"
+        f"暂存文件：\n{listing}\n\n"
+        f"改动统计：\n{change_summary}\n\n"
+        f"具体差异（Git diff）：\n{change_diff}\n\n"
+        f"提交说明：{commit_message}"
     ):
         return "用户拒绝提交；暂存内容保留，没有创建提交。"
 
@@ -260,7 +273,7 @@ SCHEMAS = [
     ),
     schema(
         "git_commit",
-        "经用户确认后提交当前暂存区中的文件；调用前先告诉用户提交说明并检查暂存文件。",
+        "先向用户展示当前暂存文件、改动统计和完整 Git diff，再经确认提交暂存区内容。",
         {"message": STR},
         ["message"],
     ),
