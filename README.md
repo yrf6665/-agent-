@@ -18,6 +18,8 @@
 ├── 01_function_calling.py  ← 第1步：工具调用——模型只"说"，程序来"做"
 ├── 02_mini_agent.py        ← 第2步：最小 Agent = 大模型 + 工具 + 循环
 ├── 03_coding_agent.py      ← 第3步：带规则文件、精确编辑、跑测试的编程 Agent
+├── git_commit_assistant.py ← 独立的 Git 提交与推送助手
+├── test_git_commit_assistant.py ← Git 助手的临时仓库测试
 ├── mock_server.py          ← 应急：断网/没 Key 时的模拟大模型
 ├── 提示词模板库_示例.md     ← 本周模板库范例
 └── demo_project/           ← 演示项目（藏了 4 个 bug + 1 个没写完的函数）
@@ -56,7 +58,14 @@ git commit -m "chore: 初始化第3周课堂代码"
 2. 把 `LLM_API_KEY=` 后面换成你自己的 Key（DeepSeek / 通义千问 / 智谱 / Kimi 等 OpenAI 兼容接口都可以）；
 3. **`.env` 已经写进 `.gitignore`，永远不要把 Key 提交到 Git、发到群里或截图外传。**
 
-> 没有 Key 或者机房断网？新开一个终端运行 `python mock_server.py`，再把 `.env` 改成文件末尾注释里的三行"模拟模式"配置即可。模拟模式只会按固定剧本回复，用来理解流程足够了。
+> 没有 Key 或者机房断网？新开一个终端运行模拟服务，再把 `.env` 改成文件末尾注释里的三行"模拟模式"配置即可。模拟模式只会按固定剧本回复，用来理解流程足够了。
+>
+> Windows PowerShell 中可以先启用 UTF-8 输出：
+> ```powershell
+> chcp 65001
+> $env:PYTHONIOENCODING = "utf-8"
+> python mock_server.py
+> ```
 
 ---
 
@@ -172,6 +181,52 @@ python 03_coding_agent.py
 | 模型从不调用工具 | 模型不支持 Function Calling 或描述不清 | 换支持工具调用的模型；改 `description` |
 | `UnicodeDecodeError` | 文件不是 UTF-8 | 用编辑器另存为 UTF-8 |
 | `ModuleNotFoundError: openai` | 依赖没装在当前环境 | 激活虚拟环境后重新 `pip install` |
+
+## 附加实操：独立 Git 提交助手
+
+运行：
+
+```powershell
+python git_commit_assistant.py
+```
+
+### 工作原理
+
+助手只管理脚本所在的课堂代码仓库，不接受任意仓库路径或任意 shell 命令。它按下面的流程调用四个工具：
+
+1. `git_status` 读取仓库状态，列出当前分支和文件改动，不修改文件。
+2. `git_stage(paths)` 只暂存你明确列出的仓库内文件；如果暂存区已经有内容，它会停止，避免把改动混在一起。暂存前会显示文件并要求确认。
+3. `git_commit(message)` 只提交暂存区里的内容，提交前会显示文件和提交说明并要求确认。
+4. `git_push()` 只推送当前分支已配置的 upstream；推送前会显示目标并再次要求确认，不会强制覆盖远程内容。
+
+每一步都由 Agent 根据工具说明生成参数，再由脚本执行对应的 Git 操作。拒绝确认时不会执行该步；Git 操作失败时会报告错误，工作区文件仍保留。
+
+### 离线演示（只读，不会提交或推送）
+
+在第一个 PowerShell 终端启动模拟服务：
+
+```powershell
+chcp 65001
+$env:PYTHONIOENCODING = "utf-8"
+python mock_server.py
+```
+
+在第二个终端运行助手：
+
+```powershell
+chcp 65001
+$env:PYTHONIOENCODING = "utf-8"
+$env:LLM_API_KEY = "mock"
+$env:LLM_BASE_URL = "http://127.0.0.1:8000/v1"
+$env:LLM_MODEL = "mock-model"
+python git_commit_assistant.py
+```
+
+输入：“检查仓库状态，告诉我哪些文件有未提交改动；只做只读检查，不要暂存、提交或推送。”模拟服务只会调用 `git_status`。可以截取终端里显示的任务、工具调用和状态结果作为演示材料。
+
+要实际使用提交或推送功能，使用你配置好的模型服务，并仔细阅读终端中的文件列表、提交说明或推送目标，再决定是否输入 `y`。自动化测试使用临时 Git 仓库和本地 bare remote，不会连接 GitHub。
+
+---
 
 ## 课后作业
 

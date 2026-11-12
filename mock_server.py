@@ -53,6 +53,11 @@ def decide(req):
     if "拒绝" in last_tool:
         return "（模拟模式）好的，你拒绝了这次操作，我先停下来。需要换个做法请告诉我。", None
 
+    if "git_status" in tools:                           # Git 助手的离线只读演示
+        if steps == 0:
+            return "我先只读检查当前仓库状态。", [tool_call("git_status", {})]
+        return ("（模拟模式）已检查仓库状态。本演示只调用 git_status，不会暂存、提交或推送。\n"
+                + last_tool), None
     if "get_weather" in tools:
         if steps == 0:
             return None, [tool_call("get_weather", {"city": "北京"})]
