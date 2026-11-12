@@ -120,6 +120,67 @@ def git_status():
     return _clip(result.stdout or "工作区干净，没有待提交的改动。")
 
 
+def git_diff(paths=None):
+    """只读显示暂存、未暂存和未跟踪文件的改动，不修改 Git 状态。"""
+    problem = _repo_check()
+    if problem:
+        return problem
+
+    selected = None
+    if paths is not None:
+        if not isinstance(paths, list) or not paths:
+            return "paths 必须是非空的仓库相对文件路径列表，或省略以查看全部改动。"
+        try:
+            selected = list(dict.fromkeys(_validate_path(path) for path in paths))
+        except (ValueError, RuntimeError) as exc:
+            return _clip(str(exc))
+
+    path_args = ["--", *selected] if selected else []
+    status = _run_git(["status", "--short", "--branch", *path_args])
+    if status.returncode != 0:
+        return _failure(status)
+    staged = _run_git(["diff", "--cached", "--no-ext-diff", "--no-color", "--unified=3", *path_args])
+    if staged.returncode != 0:
+        return _failure(staged)
+    unstaged = _run_git(["diff", "--no-ext-diff", "--no-color", "--unified=3", *path_args])
+    if unstaged.returncode != 0:
+        return _failure(unstaged)
+    untracked = _run_git(["ls-files", "--others", "--exclude-standard", "-z", *path_args])
+    if untracked.returncode != 0:
+        return _failure(untracked)
+
+    untracked_previews = []
+    for relative in filter(None, untracked.stdout.split("\0")):
+        try:
+            safe_relative = _validate_path(relative)
+            file_path = REPO_ROOT.joinpath(*PurePosixPath(safe_relative).parts)
+            with file_path.open("rb") as file:
+                content = file.read(MAX_CHARS + 1)
+        except (OSError, ValueError, RuntimeError) as exc:
+            untracked_previews.append(f"--- {relative}\n（无法读取：{exc}）")
+            continue
+        if b"\0" in content:
+            detail = "（二进制文件，不显示内容）"
+        else:
+            text = content.decode("utf-8", errors="replace")
+            if len(content) > MAX_CHARS:
+                text += "\n……（新文件内容过长，预览已截断）"
+            detail = "\n" + "\n".join(f"+ {line}" for line in text.splitlines())
+        untracked_previews.append(f"--- 新文件：{safe_relative}{detail}")
+
+    if not staged.stdout and not unstaged.stdout and not untracked_previews:
+        return _clip(f"没有待提交的文件改动。\n{status.stdout.strip()}")
+
+    sections = [f"当前状态：\n{status.stdout.strip()}"]
+    if staged.stdout.strip():
+        sections.append(f"已暂存的差异：\n{staged.stdout.strip()}")
+    if unstaged.stdout.strip():
+        sections.append(f"未暂存的差异：\n{unstaged.stdout.strip()}")
+    if untracked_previews:
+        sections.append("未跟踪的新文件：\n" + "\n\n".join(untracked_previews))
+    return _clip("\n\n".join(sections))
+
+
 def git_stage(paths):
     """在暂存区为空时，经用户确认后暂存明确列出的仓库相对文件。"""
     problem = _repo_check()
@@ -266,6 +327,11 @@ STR = {"type": "string"}
 SCHEMAS = [
     schema("git_status", "只读检查当前课堂代码仓库的分支和改动状态。开始 Git 操作前先调用。"),
     schema(
+        "git_diff",
+        "只读查看工作区的已暂存、未暂存和新文件改动；用户询问改了什么时调用。不会暂存、提交或推送。可传明确文件列表缩小范围，也可省略查看全部。",
+        {"paths": {"type": "array", "items": STR}},
+    ),
+    schema(
         "git_stage",
         "经用户确认后暂存明确列出的仓库相对文件路径；不能传目录、通配符或 '.'。暂存区已有内容时会停止。",
         {"paths": {"type": "array", "items": STR}},
@@ -285,6 +351,7 @@ SCHEMAS = [
 
 TOOLS = {
     "git_status": git_status,
+    "git_diff": git_diff,
     "git_stage": git_stage,
     "git_commit": git_commit,
     "git_push": git_push,
@@ -292,7 +359,8 @@ TOOLS = {
 
 SYSTEM_PROMPT = (
     "你是一个专门帮助用户检查、提交和推送当前课堂代码仓库的 Git 助手。\n"
-    "工作流程：先调用 git_status；根据用户明确指定的文件调用 git_stage；"
+    "用户询问改了什么时，调用只读 git_diff 查看具体差异；绝不能为了展示差异而暂存、提交或推送。\n"
+    "提交或推送任务开始时先调用 git_status；根据用户明确指定的文件调用 git_stage；"
     "再调用 git_commit；只有用户明确要求上传时，才调用 git_push。\n"
     "git_stage、git_commit 和 git_push 都会在程序侧显示具体操作并要求用户确认。"
     "不要尝试绕过确认，不要调用未提供的命令，不要声称失败的操作已成功。\n"

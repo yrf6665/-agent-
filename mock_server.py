@@ -55,8 +55,13 @@ def decide(req):
 
     if "git_status" in tools:                           # Git 助手的离线只读演示
         if steps == 0:
+            task_text = messages[last_user]["content"]
+            if "git_diff" in tools and any(
+                keyword in task_text for keyword in ("改了什么", "修改", "差异", "diff", "具体改动", "变更内容")
+            ):
+                return "我先只读查看工作区的具体改动。", [tool_call("git_diff", {})]
             return "我先只读检查当前仓库状态。", [tool_call("git_status", {})]
-        return ("（模拟模式）已检查仓库状态。本演示只调用 git_status，不会暂存、提交或推送。\n"
+        return ("（模拟模式）已完成只读检查。本演示只调用 git_status 或 git_diff，不会暂存、提交或推送。\n"
                 + last_tool), None
     if "get_weather" in tools:
         if steps == 0:

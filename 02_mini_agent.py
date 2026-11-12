@@ -22,8 +22,8 @@ import sys
 
 from common import MODEL, client, to_dict
 
-# 安全措施①：Agent 只能在这个"工作区"文件夹里活动，碰不到你电脑上的其他文件
-WORKSPACE = os.path.abspath(os.getenv("AGENT_WORKSPACE", "demo_project"))
+# 安全措施①：Agent 的文件工具只在本脚本所在的"课堂代码"项目文件夹内活动
+WORKSPACE = os.path.dirname(os.path.abspath(__file__))
 MAX_STEPS = 10           # 安全措施②：最多走 10 步，防止模型陷入死循环、烧光 token
 MAX_CHARS = 4000         # 安全措施③：读文件最多返回 4000 字，防止撑爆上下文窗口
 
